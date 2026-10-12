@@ -11,6 +11,7 @@ import {
   type QuestionAnswer,
 } from "./AdditionalQuestions";
 import { AiAnalysisPreparation } from "./AiAnalysisPreparation";
+import { AiAnalysisResult } from "./AiAnalysisResult";
 import { DamageDescriptionForm } from "./DamageDescriptionForm";
 import { InsuranceDetailsForm } from "./InsuranceDetailsForm";
 import type { LocalPolicyUploadDocument } from "./PolicyDocumentUpload";
@@ -55,6 +56,7 @@ export function NieuweSchadeWorkspace() {
         questionAnswers={questionAnswers}
         uploadedDocuments={uploadedDocuments}
       />
+      <AiAnalysisResult />
     </>
   );
 }
