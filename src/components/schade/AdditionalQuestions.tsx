@@ -19,7 +19,7 @@ export type AdditionalQuestion = TextQuestion | YesNoUnknownQuestion;
 
 export type QuestionAnswer = string;
 
-const SAMPLE_QUESTIONS: AdditionalQuestion[] = [
+export const SAMPLE_QUESTIONS: AdditionalQuestion[] = [
   {
     id: "cause",
     prompt: "Wat is de vermoedelijke oorzaak van de schade?",
@@ -55,16 +55,19 @@ const toggleButtonClass =
 
 type AdditionalQuestionsProps = {
   questions?: AdditionalQuestion[];
+  answers: Record<string, QuestionAnswer>;
+  onAnswersChange: (answers: Record<string, QuestionAnswer>) => void;
 };
 
 export function AdditionalQuestions({
   questions = SAMPLE_QUESTIONS,
+  answers,
+  onAnswersChange,
 }: AdditionalQuestionsProps) {
   const [visible, setVisible] = useState(true);
-  const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({});
 
   function setAnswer(id: string, value: string) {
-    setAnswers((current) => ({ ...current, [id]: value }));
+    onAnswersChange({ ...answers, [id]: value });
   }
 
   return (
