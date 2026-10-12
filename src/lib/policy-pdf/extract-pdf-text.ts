@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  getDocument,
-  GlobalWorkerOptions,
-  PasswordException,
-  ResponseException,
-  InvalidPDFException,
-  type PDFDocumentProxy,
-} from "pdfjs-dist";
+import type { PDFDocumentProxy } from "pdfjs-dist";
 import type {
   ExtractedPdfDocument,
   ExtractedPdfPage,
@@ -16,14 +9,25 @@ import type {
 
 /** Lokale worker uit /public — geen CDN. */
 const LOCAL_WORKER_SRC = "/pdf.worker.min.mjs";
+const EXTRACTION_TIMEOUT_MS = 45_000;
 
+type PdfjsModule = typeof import("pdfjs-dist");
+
+let pdfjsModulePromise: Promise<PdfjsModule> | null = null;
 let workerConfigured = false;
 
-function ensurePdfWorkerConfigured(): void {
-  if (workerConfigured) return;
-  if (typeof window === "undefined") return;
-  GlobalWorkerOptions.workerSrc = LOCAL_WORKER_SRC;
-  workerConfigured = true;
+async function loadPdfjs(): Promise<PdfjsModule> {
+  if (!pdfjsModulePromise) {
+    pdfjsModulePromise = import("pdfjs-dist");
+  }
+  const pdfjs = await pdfjsModulePromise;
+
+  if (!workerConfigured && typeof window !== "undefined") {
+    pdfjs.GlobalWorkerOptions.workerSrc = LOCAL_WORKER_SRC;
+    workerConfigured = true;
+  }
+
+  return pdfjs;
 }
 
 function yieldToUi(): Promise<void> {
@@ -32,22 +36,51 @@ function yieldToUi(): Promise<void> {
   });
 }
 
-function classifyExtractionError(error: unknown): string {
-  if (error instanceof PasswordException) {
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(message));
+    }, ms);
+
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+function classifyExtractionError(error: unknown, pdfjs: PdfjsModule): string {
+  if (error instanceof pdfjs.PasswordException) {
     return "Dit PDF-bestand is beveiligd met een wachtwoord en kan niet worden gelezen.";
   }
-  if (error instanceof InvalidPDFException) {
+  if (error instanceof pdfjs.InvalidPDFException) {
     return "Dit PDF-bestand lijkt beschadigd of ongeldig en kan niet worden gelezen.";
   }
-  if (error instanceof ResponseException) {
+  if (error instanceof pdfjs.ResponseException) {
     return "Het PDF-bestand kon niet worden verwerkt.";
   }
 
   const message =
     error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
 
+  if (message.includes("timeout") || message.includes("tijdslimiet")) {
+    return "De tekstextractie duurde te lang. Probeer een kleiner PDF-bestand.";
+  }
   if (message.includes("password") || message.includes("encrypted")) {
     return "Dit PDF-bestand is beveiligd en kan niet worden gelezen.";
+  }
+  if (
+    message.includes("worker") ||
+    message.includes("failed to fetch") ||
+    message.includes("dynamically imported module")
+  ) {
+    return "De lokale PDF-verwerker kon niet worden geladen. Vernieuw de pagina en probeer het opnieuw.";
   }
   if (message.includes("invalid") || message.includes("corrupt")) {
     return "Dit PDF-bestand lijkt beschadigd of ongeldig en kan niet worden gelezen.";
@@ -78,20 +111,38 @@ async function extractPageText(
 
 /**
  * Extraheert tekst uit een PDF uitsluitend in de browser.
- * Geen netwerkcalls, geen logging van documentinhoud.
+ * Geen netwerkcalls met documentinhoud, geen logging van documenttekst.
  */
 export async function extractPdfTextLocally(input: {
   file: File;
   documentType: PolicyDocumentType;
 }): Promise<ExtractedPdfDocument> {
-  ensurePdfWorkerConfigured();
-
   const fileName = input.file.name;
+  let pdfjs: PdfjsModule;
+
+  try {
+    pdfjs = await loadPdfjs();
+  } catch {
+    return {
+      fileName,
+      documentType: input.documentType,
+      pageCount: 0,
+      pages: [],
+      totalTextLength: 0,
+      status: "failed",
+      errorMessage:
+        "De lokale PDF-verwerker kon niet worden geladen. Vernieuw de pagina en probeer het opnieuw.",
+    };
+  }
+
   let pdf: PDFDocumentProxy | null = null;
 
   try {
-    const data = new Uint8Array(await input.file.arrayBuffer());
-    const loadingTask = getDocument({
+    // Kopieer de bytes zodat overdracht naar de worker de File-buffer niet detacht.
+    const source = await input.file.arrayBuffer();
+    const data = new Uint8Array(source.slice(0));
+
+    const loadingTask = pdfjs.getDocument({
       data,
       useSystemFonts: true,
       isEvalSupported: false,
@@ -99,17 +150,20 @@ export async function extractPdfTextLocally(input: {
       isOffscreenCanvasSupported: false,
       disableAutoFetch: true,
       disableStream: true,
-      // Geen externe cMap-/font-CDN's.
       stopAtErrors: false,
     });
 
-    pdf = await loadingTask.promise;
+    pdf = await withTimeout(
+      loadingTask.promise,
+      EXTRACTION_TIMEOUT_MS,
+      "tijdslimiet bij openen van PDF",
+    );
+
     const pageCount = pdf.numPages;
     const pages: ExtractedPdfPage[] = [];
 
     for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
       pages.push(await extractPageText(pdf, pageNumber));
-      // Voorkom UI-blokkade bij grotere documenten.
       await yieldToUi();
     }
 
@@ -147,12 +201,12 @@ export async function extractPdfTextLocally(input: {
       pages: [],
       totalTextLength: 0,
       status: "failed",
-      errorMessage: classifyExtractionError(error),
+      errorMessage: classifyExtractionError(error, pdfjs),
     };
   } finally {
     if (pdf) {
       try {
-        await pdf.destroy();
+        void pdf.destroy();
       } catch {
         // Negeer opruimfouten; geen documentinhoud loggen.
       }
