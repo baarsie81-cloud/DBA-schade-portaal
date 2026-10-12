@@ -56,7 +56,7 @@ export function NieuweSchadeWorkspace() {
         questionAnswers={questionAnswers}
         uploadedDocuments={uploadedDocuments}
       />
-      <AiAnalysisResult />
+      <AiAnalysisResult uploadedDocuments={uploadedDocuments} />
     </>
   );
 }
