@@ -100,6 +100,7 @@ function scoreLink(
   // Lichte voorkeur voor polis-/productvoorwaarden boven generieke documenten.
   if (textHaystack.includes("polisvoorwaarden")) score += 5;
   if (textHaystack.includes("productvoorwaarden")) score += 3;
+  if (textHaystack.includes("verzekeringsvoorwaarden")) score += 3;
 
   // Schadedatumjaartal is alleen context, geen bewijs.
   const year = input.damageDate.slice(0, 4);

@@ -46,20 +46,40 @@ function looksLikeDocumentLink(
   if (href.toLowerCase().includes(".pdf")) return true;
   if (titleAttr.toLowerCase().includes(".pdf")) return true;
   if (href.toLowerCase().includes("/download/")) return true;
+  if (href.toLowerCase().includes("/getpdf")) return true;
+  if (href.toLowerCase().includes("/pod/")) return true;
+  if (href.toLowerCase().includes("/binaries/")) return true;
+  if (href.toLowerCase().includes("/-/media/")) return true;
   if (haystack.includes("polisvoorwaarden")) return true;
   if (haystack.includes("productvoorwaarden")) return true;
   if (haystack.includes("verzekeringsvoorwaarden")) return true;
   return /voorwaarden/.test(haystack);
 }
 
-/** Herkent veelvoorkomende NL voorwaardecodes uit openbare linkteksten. */
+function titleFromUrl(url: string): string {
+  try {
+    const pathname = new URL(url).pathname;
+    const file = pathname.split("/").filter(Boolean).pop() ?? url;
+    return decodeURIComponent(file)
+      .replace(/\.pdf$/i, "")
+      .replace(/[-_]+/g, " ")
+      .trim();
+  } catch {
+    return url;
+  }
+}
+
+/** Herkent veelvoorkomende NL voorwaardecodes en versienummers uit openbare teksten. */
 export function extractConditionCodeHint(text: string): string | null {
   const patterns = [
     /\bPP\s*[- ]?\s*\d{3,5}\s*[-–]\s*\d{2}\b/i,
     /\bUN[A-Z]{2,8}\s*[-–]?\s*\d{2}\b/i,
-    /\bVP\s+[A-Z]{1,6}(?:-[A-Z]{1,6})?\s+\d{4}-\d{2}\b/i,
+    /\bVP\s+[A-Z]{1,8}(?:-[A-Z0-9]{1,8})*(?:\s+\d{4}-\d{2})?\b/i,
+    /\bVP\s+[A-Z]{2}-\d{4}-\d{2}\b/i,
+    /\b(?:Woon|AVP|AUTO|PM|IO|IP|GLS|RBD|REIS|DR|GO|OP|AW|OO|HUIS|INB|WOO)\d{2}[A-Z]?\b/i,
     /\b(?:INB|WOO|AVP|AUTO|OO|IO|IP|GLS|RBD|REIS|DR|PM|HUIS|AW|OP)-?[A-Z]*\s*\d{2}[A-Z]?\b/i,
     /\b(?:INB|WOO)-RV-\d{2}-\d{3}\b/i,
+    /\bversie[-\s]?\d+(?:\.\d+)?\b/i,
   ];
 
   for (const pattern of patterns) {
@@ -69,9 +89,35 @@ export function extractConditionCodeHint(text: string): string | null {
   return null;
 }
 
+function pushUniqueLink(
+  results: ExtractedDocumentLink[],
+  seen: Set<string>,
+  absoluteUrl: string,
+  linkText: string,
+  titleAttr: string,
+) {
+  const key = absoluteUrl.toLowerCase();
+  if (seen.has(key)) return;
+  seen.add(key);
+
+  const title = (linkText || titleAttr || titleFromUrl(absoluteUrl) || absoluteUrl).slice(
+    0,
+    220,
+  );
+  const combined = `${linkText} ${titleAttr} ${absoluteUrl}`;
+  results.push({
+    title,
+    url: absoluteUrl,
+    domain: extractHostname(absoluteUrl),
+    linkText,
+    titleAttr,
+    conditionCodeHint: extractConditionCodeHint(combined),
+  });
+}
+
 /**
  * Extraheert documentlinks uit HTML van een allowlisted bronpagina.
- * Gebruikt alleen aanwezige href/titel/linktekst — verzint niets.
+ * Gebruikt alleen aanwezige href/titel/linktekst/URL's — verzint niets.
  */
 export function extractDocumentLinks(
   html: string,
@@ -79,8 +125,7 @@ export function extractDocumentLinks(
 ): ExtractedDocumentLink[] {
   const results: ExtractedDocumentLink[] = [];
   const seen = new Set<string>();
-  const anchorRegex =
-    /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+  const anchorRegex = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
 
   let match: RegExpExecArray | null;
   while ((match = anchorRegex.exec(html)) !== null) {
@@ -100,20 +145,27 @@ export function extractDocumentLinks(
     const absoluteUrl = resolveUrl(href, baseUrl);
     if (!absoluteUrl) continue;
 
-    const key = absoluteUrl.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
+    pushUniqueLink(results, seen, absoluteUrl, linkText, titleAttr);
+  }
 
-    const title = (linkText || titleAttr || absoluteUrl).slice(0, 220);
-    const combined = `${linkText} ${titleAttr} ${absoluteUrl}`;
-    results.push({
-      title,
-      url: absoluteUrl,
-      domain: extractHostname(absoluteUrl),
-      linkText,
-      titleAttr,
-      conditionCodeHint: extractConditionCodeHint(combined),
-    });
+  // Sommige hubs (o.a. Univé) embedden PDF-URL's buiten <a href>.
+  const barePdfRegex =
+    /https:\/\/[a-z0-9.-]+(?:\/[^\s"'<>]*)?\.pdf(?:\?[^\s"'<>]*)?/gi;
+  let bareMatch: RegExpExecArray | null;
+  while ((bareMatch = barePdfRegex.exec(html)) !== null) {
+    const absoluteUrl = resolveUrl(bareMatch[0], baseUrl);
+    if (!absoluteUrl) continue;
+    pushUniqueLink(results, seen, absoluteUrl, "", "");
+  }
+
+  // Officiële download-API's zonder .pdf in het pad (o.a. a.s.r. getpdf).
+  const getPdfRegex =
+    /https:\/\/[a-z0-9.-]+\/[^\s"'<>]*getpdf[^\s"'<>]*/gi;
+  let getPdfMatch: RegExpExecArray | null;
+  while ((getPdfMatch = getPdfRegex.exec(html)) !== null) {
+    const absoluteUrl = resolveUrl(getPdfMatch[0], baseUrl);
+    if (!absoluteUrl) continue;
+    pushUniqueLink(results, seen, absoluteUrl, "", "");
   }
 
   return results;
