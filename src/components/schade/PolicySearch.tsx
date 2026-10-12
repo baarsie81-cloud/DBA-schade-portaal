@@ -467,8 +467,9 @@ export function PolicySearch({ searchInput }: PolicySearchProps) {
               Documenten uploaden
             </h3>
             <p className="mt-1.5 text-[13px] leading-relaxed text-dba-muted">
-              Selecteer lokale PDF-bestanden. Bestanden worden in deze stap
-              niet naar een server gestuurd en niet inhoudelijk geanalyseerd.
+              Selecteer lokale PDF-bestanden. Tekstextractie gebeurt alleen in
+              de browser; er wordt niets naar een server gestuurd. Er volgt nog
+              geen polisverificatie.
             </p>
           </div>
           <PolicyDocumentUpload

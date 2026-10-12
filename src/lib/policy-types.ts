@@ -102,3 +102,31 @@ export type ManualPolicyDocumentRef = {
 export type PolicyDocumentRef =
   | OnlinePolicyDocumentRef
   | ManualPolicyDocumentRef;
+
+/** Status van lokale PDF-tekstextractie (browsergeheugen). */
+export type PdfTextExtractionStatus =
+  | "pending"
+  | "processing"
+  | "ready"
+  | "empty"
+  | "failed";
+
+/** Tekst van één PDF-pagina; paginanummer blijft beschikbaar voor bronverwijzing. */
+export type ExtractedPdfPage = {
+  pageNumber: number;
+  text: string;
+};
+
+/**
+ * Lokaal geëxtraheerde documenttekst.
+ * Alleen bedoeld voor latere identificatie/verificatie in de browser.
+ */
+export type ExtractedPdfDocument = {
+  fileName: string;
+  documentType: PolicyDocumentType;
+  pageCount: number;
+  pages: ExtractedPdfPage[];
+  totalTextLength: number;
+  status: Exclude<PdfTextExtractionStatus, "pending" | "processing">;
+  errorMessage?: string;
+};
