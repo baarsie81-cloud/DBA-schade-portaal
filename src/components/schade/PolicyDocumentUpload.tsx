@@ -1,9 +1,12 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
-import { FileText, ShieldCheck, Trash2, Upload } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { FileText, LoaderCircle, ShieldCheck, Trash2, Upload } from "lucide-react";
+import { extractPdfTextLocally } from "@/lib/policy-pdf/extract-pdf-text";
 import {
   POLICY_DOCUMENT_TYPE_OPTIONS,
+  type ExtractedPdfDocument,
+  type PdfTextExtractionStatus,
   type PolicyDocumentType,
 } from "@/lib/policy-types";
 
@@ -14,11 +17,19 @@ export type LocalPolicyUploadDocument = {
   id: string;
   file: File;
   documentType: PolicyDocumentType;
+  /** Lokale extractieresultaten; verdwijnen bij verwijderen van het document. */
+  extractionStatus: PdfTextExtractionStatus;
+  extractedDocument?: ExtractedPdfDocument;
+  extractionError?: string;
 };
+
+type DocumentsUpdater =
+  | LocalPolicyUploadDocument[]
+  | ((prev: LocalPolicyUploadDocument[]) => LocalPolicyUploadDocument[]);
 
 type PolicyDocumentUploadProps = {
   documents: LocalPolicyUploadDocument[];
-  onChange: (documents: LocalPolicyUploadDocument[]) => void;
+  onChange: (next: DocumentsUpdater) => void;
 };
 
 const secondaryButtonClass =
@@ -42,7 +53,6 @@ function createDocumentId(): string {
 async function hasPdfSignature(file: File): Promise<boolean> {
   try {
     const header = new Uint8Array(await file.slice(0, 5).arrayBuffer());
-    // %PDF-
     return (
       header.length >= 5 &&
       header[0] === 0x25 &&
@@ -58,7 +68,6 @@ async function hasPdfSignature(file: File): Promise<boolean> {
 
 function isAllowedPdfMime(mimeType: string): boolean {
   const normalized = mimeType.trim().toLowerCase();
-  // Sommige browsers geven een leeg of generiek type; handtekening dekt dat af.
   return (
     normalized === "" ||
     normalized === "application/pdf" ||
@@ -100,6 +109,21 @@ async function validatePdfFile(
   return null;
 }
 
+function extractionStatusLabel(status: PdfTextExtractionStatus): string {
+  switch (status) {
+    case "pending":
+      return "Nog niet verwerkt";
+    case "processing":
+      return "Verwerken";
+    case "ready":
+      return "Tekst beschikbaar";
+    case "empty":
+      return "Geen leesbare tekst gevonden";
+    case "failed":
+      return "Verwerking mislukt";
+  }
+}
+
 export function PolicyDocumentUpload({
   documents,
   onChange,
@@ -107,8 +131,56 @@ export function PolicyDocumentUpload({
   const inputId = useId();
   const checkboxId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const processingIdsRef = useRef(new Set<string>());
   const [privacyConfirmed, setPrivacyConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const pending = documents.find(
+      (doc) =>
+        doc.extractionStatus === "pending" &&
+        !processingIdsRef.current.has(doc.id),
+    );
+    if (!pending) return;
+
+    processingIdsRef.current.add(pending.id);
+
+    onChange((prev) =>
+      prev.map((doc) =>
+        doc.id === pending.id
+          ? {
+              ...doc,
+              extractionStatus: "processing",
+              extractionError: undefined,
+            }
+          : doc,
+      ),
+    );
+
+    void (async () => {
+      const result = await extractPdfTextLocally({
+        file: pending.file,
+        documentType: pending.documentType,
+      });
+
+      onChange((prev) => {
+        // Document kan tussentijds verwijderd zijn → tekst niet meer bewaren.
+        if (!prev.some((doc) => doc.id === pending.id)) {
+          return prev;
+        }
+        return prev.map((doc) => {
+          if (doc.id !== pending.id) return doc;
+          return {
+            ...doc,
+            extractionStatus: result.status,
+            extractedDocument: result,
+            extractionError: result.errorMessage,
+          };
+        });
+      });
+      processingIdsRef.current.delete(pending.id);
+    })();
+  }, [documents, onChange]);
 
   async function handleFilesSelected(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
@@ -139,6 +211,7 @@ export function PolicyDocumentUpload({
         id: createDocumentId(),
         file,
         documentType: "polisvoorwaarden",
+        extractionStatus: "pending",
       });
     }
 
@@ -156,15 +229,24 @@ export function PolicyDocumentUpload({
   }
 
   function updateDocumentType(id: string, documentType: PolicyDocumentType) {
-    onChange(
-      documents.map((doc) =>
-        doc.id === id ? { ...doc, documentType } : doc,
-      ),
+    onChange((prev) =>
+      prev.map((doc) => {
+        if (doc.id !== id) return doc;
+        return {
+          ...doc,
+          documentType,
+          extractedDocument: doc.extractedDocument
+            ? { ...doc.extractedDocument, documentType }
+            : doc.extractedDocument,
+        };
+      }),
     );
   }
 
   function removeDocument(id: string) {
-    onChange(documents.filter((doc) => doc.id !== id));
+    processingIdsRef.current.delete(id);
+    // Verwijderen ruimt File + geëxtraheerde tekst uit React-state op.
+    onChange((prev) => prev.filter((doc) => doc.id !== id));
     setError(null);
   }
 
@@ -228,9 +310,9 @@ export function PolicyDocumentUpload({
             </p>
             <p className="mt-1 text-[13px] leading-relaxed text-dba-muted">
               Alleen PDF, maximaal 15 MB per bestand, maximaal{" "}
-              {MAX_POLICY_DOCUMENTS} documenten. Een polisblad is niet hetzelfde
-              als de polisvoorwaarden; een polisblad alleen kan onvoldoende zijn
-              voor de latere schadeanalyse.
+              {MAX_POLICY_DOCUMENTS} documenten. Tekstextractie gebeurt lokaal
+              in de browser. Een polisblad is niet hetzelfde als de
+              polisvoorwaarden.
             </p>
           </div>
           <button
@@ -288,8 +370,9 @@ export function PolicyDocumentUpload({
 
         {documents.length === 0 ? (
           <p className="mt-3 text-sm leading-relaxed text-dba-muted">
-            Nog geen documenten geselecteerd. Bestanden blijven alleen tijdelijk
-            in deze browsersessie; er wordt nog niets naar een server gestuurd.
+            Nog geen documenten geselecteerd. Bestanden en geëxtraheerde tekst
+            blijven alleen tijdelijk in het browsergeheugen; er wordt niets naar
+            een server gestuurd.
           </p>
         ) : (
           <ul className="mt-3 space-y-3">
@@ -311,7 +394,32 @@ export function PolicyDocumentUpload({
                       </p>
                       <p className="mt-1 text-[12px] text-dba-muted">
                         {formatFileSize(doc.file.size)}
+                        {doc.extractedDocument?.pageCount
+                          ? ` · ${doc.extractedDocument.pageCount} pagina${
+                              doc.extractedDocument.pageCount === 1 ? "" : "s"
+                            }`
+                          : ""}
                       </p>
+                      <p className="mt-1.5 inline-flex items-center gap-1.5 text-[12px] text-dba-charcoal">
+                        {doc.extractionStatus === "processing" ? (
+                          <LoaderCircle
+                            className="h-3.5 w-3.5 animate-spin text-dba-green"
+                            strokeWidth={1.75}
+                            aria-hidden
+                          />
+                        ) : null}
+                        <span>
+                          Tekstextractie:{" "}
+                          <span className="font-medium">
+                            {extractionStatusLabel(doc.extractionStatus)}
+                          </span>
+                        </span>
+                      </p>
+                      {doc.extractionError ? (
+                        <p className="mt-1 text-[12px] leading-relaxed text-[#9b2c2c]">
+                          {doc.extractionError}
+                        </p>
+                      ) : null}
                     </div>
                   </div>
 
