@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { OfficialHubFetchError } from "@/lib/policy-search/fetch-official-hub";
 import { searchOfficialDocuments } from "@/lib/policy-search/search-official-documents";
 import { parsePolicySearchBody } from "@/lib/policy-search/validate-input";
 
@@ -8,6 +7,7 @@ export const runtime = "nodejs";
 /**
  * Zoekt openbare kandidaatdocumenten op vooraf geregistreerde
  * officiële verzekeraarsbronnen. Geen PDF-analyse, geen exacte match.
+ * Bronfouten worden per zoekactie afgehandeld zonder andere merken te raken.
  */
 export async function POST(request: Request) {
   let body: unknown;
@@ -49,17 +49,13 @@ export async function POST(request: Request) {
       candidates: result.candidates,
       message: result.message,
     });
-  } catch (error) {
-    if (error instanceof OfficialHubFetchError) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: error.status },
-      );
-    }
-
+  } catch {
     console.error("poliszoeken: onverwachte fout");
     return NextResponse.json(
-      { error: "Er ging iets mis bij het zoeken. Probeer het opnieuw." },
+      {
+        error:
+          "Er ging iets mis bij het zoeken. Zoek de juiste polisvoorwaarden in het interne systeem van DBA en upload deze.",
+      },
       { status: 500 },
     );
   }

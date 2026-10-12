@@ -104,11 +104,15 @@ export function PolicySearch({ searchInput }: PolicySearchProps) {
       }
 
       setCandidates([]);
+      setInfoMessage(
+        data.message ??
+          "De juiste polisvoorwaarden konden niet met voldoende zekerheid worden vastgesteld.\n\nZoek de juiste polisvoorwaarden in het interne systeem van DBA en upload deze.",
+      );
       setStatus("no_match");
     } catch {
       setStatus("error");
       setError(
-        "De zoekopdracht kon niet worden uitgevoerd. Controleer je verbinding en probeer het opnieuw.",
+        "De zoekopdracht kon niet worden uitgevoerd. Controleer je verbinding en probeer het opnieuw.\n\nZoek de juiste polisvoorwaarden in het interne systeem van DBA en upload deze.",
       );
     }
   }
@@ -260,9 +264,9 @@ export function PolicySearch({ searchInput }: PolicySearchProps) {
 
         {status === "no_match" ? (
           <div className="space-y-4">
-            <p className="text-sm leading-relaxed text-dba-muted">
-              De juiste polisvoorwaarden konden niet met voldoende zekerheid
-              worden vastgesteld.
+            <p className="whitespace-pre-line text-sm leading-relaxed text-dba-muted">
+              {infoMessage ??
+                "De juiste polisvoorwaarden konden niet met voldoende zekerheid worden vastgesteld.\n\nZoek de juiste polisvoorwaarden in het interne systeem van DBA en upload deze."}
             </p>
             <button type="button" className={secondaryButtonClass}>
               <Upload className="h-4 w-4" strokeWidth={1.75} />
@@ -273,7 +277,10 @@ export function PolicySearch({ searchInput }: PolicySearchProps) {
 
         {status === "error" && error ? (
           <div className="space-y-4">
-            <p role="alert" className="text-sm leading-relaxed text-dba-muted">
+            <p
+              role="alert"
+              className="whitespace-pre-line text-sm leading-relaxed text-dba-muted"
+            >
               {error}
             </p>
             <button type="button" className={secondaryButtonClass}>
