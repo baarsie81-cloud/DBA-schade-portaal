@@ -12,7 +12,15 @@ const attentionPoints = [
   "Is er aanvullende informatie beschikbaar, zoals foto's of een schaderapport?",
 ] as const;
 
-export function DamageDescriptionForm() {
+type DamageDescriptionFormProps = {
+  value: string;
+  onChange: (value: string) => void;
+};
+
+export function DamageDescriptionForm({
+  value,
+  onChange,
+}: DamageDescriptionFormProps) {
   return (
     <section className="rounded-xl border border-dba-border bg-dba-surface px-6 py-6 shadow-[0_1px_2px_rgba(51,53,54,0.03)] sm:px-8">
       <div className="mb-6">
@@ -54,6 +62,8 @@ export function DamageDescriptionForm() {
           name="damageDescription"
           required
           rows={8}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
           placeholder="Beschrijf de schade zo volledig mogelijk. Wat is er gebeurd, wat is beschadigd en wat was de vermoedelijke oorzaak?"
           className={textareaClass}
         />

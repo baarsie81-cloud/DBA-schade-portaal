@@ -18,8 +18,14 @@ import {
   type LocalPolicyUploadDocument,
 } from "./PolicyDocumentUpload";
 
+type DocumentsUpdater =
+  | LocalPolicyUploadDocument[]
+  | ((prev: LocalPolicyUploadDocument[]) => LocalPolicyUploadDocument[]);
+
 type PolicySearchProps = {
   searchInput: PolicySearchInput;
+  uploadedDocuments: LocalPolicyUploadDocument[];
+  onUploadedDocumentsChange: (next: DocumentsUpdater) => void;
 };
 
 type DocumentRoute = "search" | "upload";
@@ -166,15 +172,16 @@ function RouteCard({
   );
 }
 
-export function PolicySearch({ searchInput }: PolicySearchProps) {
+export function PolicySearch({
+  searchInput,
+  uploadedDocuments,
+  onUploadedDocumentsChange,
+}: PolicySearchProps) {
   const [route, setRoute] = useState<DocumentRoute>("search");
   const [status, setStatus] = useState<PolicySearchStatus>("idle");
   const [candidates, setCandidates] = useState<PolicyCandidate[]>([]);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [uploadedDocuments, setUploadedDocuments] = useState<
-    LocalPolicyUploadDocument[]
-  >([]);
 
   async function handleSearchClick() {
     setStatus("searching");
@@ -474,7 +481,7 @@ export function PolicySearch({ searchInput }: PolicySearchProps) {
           </div>
           <PolicyDocumentUpload
             documents={uploadedDocuments}
-            onChange={setUploadedDocuments}
+            onChange={onUploadedDocumentsChange}
           />
           {uploadedDocuments.length > 0 ? (
             <p className="text-[12px] leading-relaxed text-dba-muted">
