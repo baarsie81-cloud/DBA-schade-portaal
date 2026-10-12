@@ -1,4 +1,4 @@
-import { ShieldCheck } from "lucide-react";
+import { Mic, ShieldCheck } from "lucide-react";
 
 const textareaClass =
   "min-h-[180px] w-full resize-y rounded-lg border border-dba-border bg-dba-background px-3 py-2.5 text-sm leading-relaxed text-dba-charcoal outline-none placeholder:text-dba-muted focus-visible:border-dba-green focus-visible:ring-2 focus-visible:ring-dba-green focus-visible:ring-offset-1";
@@ -32,6 +32,23 @@ export function DamageDescriptionForm() {
         >
           Wat is er gebeurd? *
         </label>
+
+        <div className="mb-3 flex items-start gap-2.5 rounded-lg border border-dba-border bg-dba-background/60 px-3 py-2.5">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-dba-pill-bg text-dba-pill-text">
+            <Mic className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </span>
+          <div className="min-w-0 pt-0.5">
+            <p className="text-[13px] font-medium text-dba-charcoal">
+              Schade inspreken
+            </p>
+            <p className="mt-0.5 text-[12.5px] leading-relaxed text-dba-muted">
+              Je kunt de schadeomschrijving ook inspreken. Klik in het tekstveld
+              en druk op Windows + H. Windows zet je gesproken woorden direct om
+              naar tekst.
+            </p>
+          </div>
+        </div>
+
         <textarea
           id="damageDescription"
           name="damageDescription"
