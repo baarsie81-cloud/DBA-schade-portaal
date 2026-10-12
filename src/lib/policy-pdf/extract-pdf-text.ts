@@ -136,16 +136,16 @@ export async function extractPdfTextLocally(input: {
   }
 
   let pdf: PDFDocumentProxy | null = null;
+  let loadingTask: ReturnType<PdfjsModule["getDocument"]> | null = null;
 
   try {
     // Kopieer de bytes zodat overdracht naar de worker de File-buffer niet detacht.
     const source = await input.file.arrayBuffer();
     const data = new Uint8Array(source.slice(0));
 
-    const loadingTask = pdfjs.getDocument({
+    loadingTask = pdfjs.getDocument({
       data,
       useSystemFonts: true,
-      isEvalSupported: false,
       useWorkerFetch: false,
       isOffscreenCanvasSupported: false,
       disableAutoFetch: true,
@@ -206,7 +206,14 @@ export async function extractPdfTextLocally(input: {
   } finally {
     if (pdf) {
       try {
-        void pdf.destroy();
+        void pdf.cleanup();
+      } catch {
+        // Negeer opruimfouten; geen documentinhoud loggen.
+      }
+    }
+    if (loadingTask) {
+      try {
+        void loadingTask.destroy();
       } catch {
         // Negeer opruimfouten; geen documentinhoud loggen.
       }
