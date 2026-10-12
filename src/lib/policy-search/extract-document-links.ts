@@ -50,6 +50,9 @@ function looksLikeDocumentLink(
   if (href.toLowerCase().includes("/pod/")) return true;
   if (href.toLowerCase().includes("/binaries/")) return true;
   if (href.toLowerCase().includes("/-/media/")) return true;
+  if (href.toLowerCase().includes("/dam/documents/")) return true;
+  if (href.toLowerCase().includes("/medien/pdf/")) return true;
+  if (href.toLowerCase().includes("voorwaarden.")) return true;
   if (haystack.includes("polisvoorwaarden")) return true;
   if (haystack.includes("productvoorwaarden")) return true;
   if (haystack.includes("verzekeringsvoorwaarden")) return true;

@@ -1,6 +1,7 @@
 import { isAllowedSourceHostname } from "@/lib/policy-search/official-sources";
 
-const FETCH_TIMEOUT_MS = 8_000;
+/** Korte timeout zodat één trage bron de zoekactie niet blokkeert. */
+const FETCH_TIMEOUT_MS = 3_500;
 const MAX_HTML_BYTES = 1_500_000;
 const MAX_REDIRECTS = 3;
 

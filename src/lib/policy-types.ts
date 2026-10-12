@@ -18,6 +18,8 @@ export type PolicyCandidate = {
   sourceKind: "possible_official" | "other";
   /** Uit linktekst/titel herkend; geen geverifieerde documentmatch. */
   conditionCodeHint?: string | null;
+  /** Merknaam uit de bronregistratie. */
+  insurerName?: string;
 };
 
 export type PolicySearchStatus =
@@ -25,6 +27,8 @@ export type PolicySearchStatus =
   | "searching"
   | "setup_pending"
   | "not_implemented"
+  | "manual_only"
+  | "limited"
   | "candidates_found"
   | "no_match"
   | "error";
