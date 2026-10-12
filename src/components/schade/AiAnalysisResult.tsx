@@ -1,19 +1,33 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Check,
+  CheckCircle2,
   ClipboardCopy,
   FileSearch,
   Mail,
   ShieldAlert,
+  ShieldQuestion,
 } from "lucide-react";
 import {
   AI_COVERAGE_ASSESSMENT_LABELS,
   parseAnalysisResult,
 } from "@/lib/ai-analysis/parse-analysis-result";
 import type { AiAnalysisResult as AiAnalysisResultData } from "@/lib/ai-analysis/types";
+import {
+  SOURCE_VERIFICATION_STATUS_LABELS,
+  verifyAnalysisSources,
+  type SourceVerificationResult,
+  type SourceVerificationStatus,
+  type VerifiableDocument,
+} from "@/lib/ai-analysis/verify-sources";
+import type { LocalPolicyUploadDocument } from "./PolicyDocumentUpload";
+
+type AiAnalysisResultProps = {
+  uploadedDocuments: LocalPolicyUploadDocument[];
+};
 
 const primaryButtonClass =
   "inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-dba-dark-green px-4 text-sm font-medium text-white transition-colors hover:bg-dba-green focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dba-dark-green focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
@@ -23,6 +37,26 @@ const secondaryButtonClass =
 
 const textareaClass =
   "min-h-[220px] w-full resize-y rounded-lg border border-dba-border bg-dba-background px-3 py-2.5 text-sm leading-relaxed text-dba-charcoal outline-none placeholder:text-dba-muted focus-visible:border-dba-green focus-visible:ring-2 focus-visible:ring-dba-green focus-visible:ring-offset-1";
+
+function toVerifiableDocuments(
+  documents: LocalPolicyUploadDocument[],
+): VerifiableDocument[] {
+  return documents
+    .filter(
+      (doc) =>
+        doc.extractionStatus === "ready" &&
+        doc.extractedDocument &&
+        doc.extractedDocument.pages.length > 0,
+    )
+    .map((doc) => ({
+      id: doc.id,
+      fileName: doc.file.name,
+      pages: doc.extractedDocument!.pages.map((page) => ({
+        pageNumber: page.pageNumber,
+        text: page.text,
+      })),
+    }));
+}
 
 function ArgumentList({
   title,
@@ -51,8 +85,93 @@ function ArgumentList({
   );
 }
 
-export function AiAnalysisResult() {
+function verificationBadgeClass(status: SourceVerificationStatus): string {
+  switch (status) {
+    case "verified":
+      return "bg-[#eef6f2] text-dba-dark-green";
+    case "partially_verified":
+      return "bg-[#fff6e8] text-[#8a5a00]";
+    case "unverified":
+      return "bg-[#fdf5f5] text-[#9b2c2c]";
+  }
+}
+
+function VerificationStatusIcon({
+  status,
+}: {
+  status: SourceVerificationStatus;
+}) {
+  if (status === "verified") {
+    return (
+      <CheckCircle2
+        className="h-3.5 w-3.5 shrink-0"
+        strokeWidth={1.75}
+        aria-hidden
+      />
+    );
+  }
+  if (status === "partially_verified") {
+    return (
+      <ShieldQuestion
+        className="h-3.5 w-3.5 shrink-0"
+        strokeWidth={1.75}
+        aria-hidden
+      />
+    );
+  }
+  return (
+    <AlertTriangle
+      className="h-3.5 w-3.5 shrink-0"
+      strokeWidth={1.75}
+      aria-hidden
+    />
+  );
+}
+
+function SourceVerificationCard({
+  item,
+}: {
+  item: SourceVerificationResult;
+}) {
+  return (
+    <li className="rounded-lg border border-dba-border bg-white px-4 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-dba-charcoal">
+            {item.source.documentnaam}
+          </p>
+          <p className="mt-1 text-[12px] text-dba-muted">
+            Pagina {item.source.paginanummer}
+            {item.source.artikel ? ` · ${item.source.artikel}` : ""}
+            {item.matchedFileName
+              ? ` · Bestand: ${item.matchedFileName}`
+              : ""}
+          </p>
+        </div>
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${verificationBadgeClass(
+            item.status,
+          )}`}
+        >
+          <VerificationStatusIcon status={item.status} />
+          {SOURCE_VERIFICATION_STATUS_LABELS[item.status]}
+        </span>
+      </div>
+      <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-dba-charcoal">
+        {item.source.relevante_passage}
+      </p>
+      <p className="mt-2 text-[12px] leading-relaxed text-dba-muted">
+        {item.explanation}
+      </p>
+    </li>
+  );
+}
+
+export function AiAnalysisResult({
+  uploadedDocuments,
+}: AiAnalysisResultProps) {
   const reviewCheckboxId = useId();
+  const sourcesReviewCheckboxId = useId();
   const [rawAnswer, setRawAnswer] = useState("");
   const [parseError, setParseError] = useState<string | null>(null);
   const [processedResult, setProcessedResult] =
@@ -60,10 +179,22 @@ export function AiAnalysisResult() {
   const [processedFromRaw, setProcessedFromRaw] = useState<string | null>(null);
   const [editableMail, setEditableMail] = useState("");
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  const [incompleteSourcesAcknowledged, setIncompleteSourcesAcknowledged] =
+    useState(false);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
   const [copyError, setCopyError] = useState<string | null>(null);
+
+  const verifiableDocuments = useMemo(
+    () => toVerifiableDocuments(uploadedDocuments),
+    [uploadedDocuments],
+  );
+
+  const verification = useMemo(() => {
+    if (!processedResult) return null;
+    return verifyAnalysisSources(processedResult, verifiableDocuments);
+  }, [processedResult, verifiableDocuments]);
 
   const rawIsStale =
     processedResult !== null &&
@@ -71,13 +202,21 @@ export function AiAnalysisResult() {
     rawAnswer.trim() !== processedFromRaw.trim();
 
   useEffect(() => {
-    // Nieuwe of gewijzigde invoer mag eerdere goedkeuring niet stil overnemen.
     if (rawIsStale) {
       setReviewConfirmed(false);
+      setIncompleteSourcesAcknowledged(false);
       setCopyStatus("idle");
       setCopyError(null);
     }
   }, [rawIsStale]);
+
+  // Wanneer documenten wijzigen, moet eerdere goedkeuring opnieuw.
+  useEffect(() => {
+    setReviewConfirmed(false);
+    setIncompleteSourcesAcknowledged(false);
+    setCopyStatus("idle");
+    setCopyError(null);
+  }, [uploadedDocuments]);
 
   function handleProcess() {
     setParseError(null);
@@ -94,6 +233,7 @@ export function AiAnalysisResult() {
     setProcessedFromRaw(rawAnswer);
     setEditableMail(parsed.value.conceptmail);
     setReviewConfirmed(false);
+    setIncompleteSourcesAcknowledged(false);
   }
 
   function handleClear() {
@@ -109,7 +249,17 @@ export function AiAnalysisResult() {
 
     if (!reviewConfirmed) {
       setCopyStatus("failed");
-      setCopyError("Bevestig eerst dat je de analyse en conceptmail hebt gecontroleerd.");
+      setCopyError(
+        "Bevestig eerst dat je de analyse en conceptmail hebt gecontroleerd.",
+      );
+      return;
+    }
+
+    if (verification?.hasIncompleteSources && !incompleteSourcesAcknowledged) {
+      setCopyStatus("failed");
+      setCopyError(
+        "Bevestig eerst dat je de niet volledig geverifieerde bronnen hebt beoordeeld.",
+      );
       return;
     }
 
@@ -144,6 +294,11 @@ export function AiAnalysisResult() {
       }
     }
   }
+
+  const canCopyMail =
+    reviewConfirmed &&
+    Boolean(editableMail.trim()) &&
+    (!verification?.hasIncompleteSources || incompleteSourcesAcknowledged);
 
   return (
     <section className="rounded-xl border border-dba-border bg-dba-surface px-6 py-6 shadow-[0_1px_2px_rgba(51,53,54,0.03)] sm:px-8">
@@ -223,7 +378,7 @@ export function AiAnalysisResult() {
         </div>
       ) : null}
 
-      {processedResult ? (
+      {processedResult && verification ? (
         <div className="mt-6 space-y-4">
           <div className="rounded-lg border border-dba-border bg-[#eef6f2]/70 px-4 py-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-dba-muted">
@@ -287,39 +442,31 @@ export function AiAnalysisResult() {
             <h3 className="text-sm font-semibold text-dba-charcoal">
               Bronverwijzingen
             </h3>
-            <p className="mt-1.5 text-[12px] leading-relaxed text-dba-muted">
-              Alle bronnen hebben voorlopig de status &quot;Nog niet
-              geverifieerd&quot;.
+            <p className="mt-1.5 text-[13px] leading-relaxed text-dba-muted">
+              Broncontrole bevestigt uitsluitend of de genoemde tekst en
+              artikelen terug te vinden zijn in de documenten. De inhoudelijke
+              dekkingsbeoordeling moet door een medewerker worden gecontroleerd.
             </p>
-            {processedResult.bronnen.length === 0 ? (
+            <p className="mt-2 text-[12px] text-dba-muted">
+              {verification.verifiedCount} geverifieerd ·{" "}
+              {verification.partiallyVerifiedCount} gedeeltelijk ·{" "}
+              {verification.unverifiedCount} niet geverifieerd
+              {verifiableDocuments.length === 0
+                ? " · Geen leesbare PDF-tekst beschikbaar voor controle"
+                : ""}
+            </p>
+
+            {verification.results.length === 0 ? (
               <p className="mt-3 text-[13px] leading-relaxed text-dba-muted">
                 Geen bronnen genoemd.
               </p>
             ) : (
               <ul className="mt-3 space-y-3">
-                {processedResult.bronnen.map((source, index) => (
-                  <li
-                    key={`${source.documentnaam}-${source.paginanummer}-${index}`}
-                    className="rounded-lg border border-dba-border bg-white px-4 py-3"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-dba-charcoal">
-                          {source.documentnaam}
-                        </p>
-                        <p className="mt-1 text-[12px] text-dba-muted">
-                          Pagina {source.paginanummer}
-                          {source.artikel ? ` · ${source.artikel}` : ""}
-                        </p>
-                      </div>
-                      <span className="inline-flex rounded-full bg-[#fff6e8] px-2.5 py-1 text-[11px] font-medium text-[#8a5a00]">
-                        Nog niet geverifieerd
-                      </span>
-                    </div>
-                    <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-dba-charcoal">
-                      {source.relevante_passage}
-                    </p>
-                  </li>
+                {verification.results.map((item, index) => (
+                  <SourceVerificationCard
+                    key={`${item.source.documentnaam}-${item.source.paginanummer}-${index}`}
+                    item={item}
+                  />
                 ))}
               </ul>
             )}
@@ -340,6 +487,48 @@ export function AiAnalysisResult() {
                 </p>
               </div>
             </div>
+
+            {verification.hasIncompleteSources ? (
+              <div className="mt-4 rounded-lg border border-[#e8d9b5] bg-[#fffaf0] px-4 py-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle
+                    className="mt-0.5 h-4 w-4 shrink-0 text-[#8a5a00]"
+                    strokeWidth={1.75}
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-dba-charcoal">
+                      Niet alle bronverwijzingen zijn volledig geverifieerd
+                    </p>
+                    <p className="mt-1 text-[13px] leading-relaxed text-dba-muted">
+                      Controleer of onbevestigde of gedeeltelijk bevestigde
+                      bronnen niet ongemerkt in de klantmail terechtkomen.
+                    </p>
+                    <label
+                      htmlFor={sourcesReviewCheckboxId}
+                      className="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border border-dba-border bg-white px-3 py-3"
+                    >
+                      <input
+                        id={sourcesReviewCheckboxId}
+                        type="checkbox"
+                        checked={incompleteSourcesAcknowledged}
+                        onChange={(event) => {
+                          setIncompleteSourcesAcknowledged(
+                            event.target.checked,
+                          );
+                          setCopyStatus("idle");
+                          setCopyError(null);
+                        }}
+                        className="mt-0.5 h-4 w-4 rounded border-dba-border text-dba-dark-green focus:ring-dba-green"
+                      />
+                      <span className="text-sm leading-relaxed text-dba-charcoal">
+                        Ik heb de niet volledig geverifieerde bronnen expliciet
+                        beoordeeld voor gebruik in de conceptmail.
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <label
               htmlFor="ai-concept-mail"
@@ -386,7 +575,7 @@ export function AiAnalysisResult() {
                 onClick={() => {
                   void handleCopyMail();
                 }}
-                disabled={!reviewConfirmed || !editableMail.trim()}
+                disabled={!canCopyMail}
                 className={primaryButtonClass}
               >
                 <ClipboardCopy className="h-4 w-4" strokeWidth={1.75} />
