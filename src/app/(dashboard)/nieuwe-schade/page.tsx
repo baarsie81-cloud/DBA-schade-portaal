@@ -1,7 +1,5 @@
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
-import { AdditionalQuestions } from "@/components/schade/AdditionalQuestions";
-import { DamageDescriptionForm } from "@/components/schade/DamageDescriptionForm";
-import { InsuranceDetailsForm } from "@/components/schade/InsuranceDetailsForm";
+import { NieuweSchadeWorkspace } from "@/components/schade/NieuweSchadeWorkspace";
 
 export default function NieuweSchadePage() {
   return (
@@ -11,9 +9,7 @@ export default function NieuweSchadePage() {
         title="Nieuwe schade"
         subtitle="Vul de verzekeringsgegevens in om een schadebeoordeling te starten."
       />
-      <InsuranceDetailsForm />
-      <DamageDescriptionForm />
-      <AdditionalQuestions />
+      <NieuweSchadeWorkspace />
     </div>
   );
 }

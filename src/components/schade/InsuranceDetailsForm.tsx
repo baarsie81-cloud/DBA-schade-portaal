@@ -1,5 +1,8 @@
+"use client";
+
 import { Shield } from "lucide-react";
 import { INSURANCE_TYPE_OPTIONS } from "@/lib/insurance-options";
+import type { PolicySearchInput } from "@/lib/policy-types";
 import { InsurerCombobox } from "./InsurerCombobox";
 
 const fieldClass =
@@ -9,7 +12,19 @@ const labelClass = "mb-1.5 block text-[13px] font-medium text-dba-charcoal";
 
 const helperClass = "mt-1.5 text-[12px] leading-relaxed text-dba-muted";
 
-export function InsuranceDetailsForm() {
+type InsuranceDetailsFormProps = {
+  value: PolicySearchInput;
+  onChange: (value: PolicySearchInput) => void;
+};
+
+export function InsuranceDetailsForm({
+  value,
+  onChange,
+}: InsuranceDetailsFormProps) {
+  function patch(partial: Partial<PolicySearchInput>) {
+    onChange({ ...value, ...partial });
+  }
+
   return (
     <section className="rounded-xl border border-dba-border bg-dba-surface px-6 py-6 shadow-[0_1px_2px_rgba(51,53,54,0.03)] sm:px-8">
       <div className="mb-5 flex items-start gap-3 rounded-lg border border-dba-border bg-dba-background/60 px-4 py-3">
@@ -35,7 +50,24 @@ export function InsuranceDetailsForm() {
           <label htmlFor="insurer" className={labelClass}>
             Verzekeraar *
           </label>
-          <InsurerCombobox id="insurer" name="insurer" required />
+          <InsurerCombobox
+            id="insurer"
+            name="insurer"
+            required
+            value={value.insurerValue}
+            otherName={value.insurerOtherName}
+            onSelect={(option) =>
+              patch({
+                insurerValue: option?.value ?? "",
+                insurerLabel: option?.label ?? "",
+                insurerOtherName:
+                  option?.value === "anders" ? value.insurerOtherName : "",
+              })
+            }
+            onOtherNameChange={(insurerOtherName) =>
+              patch({ insurerOtherName })
+            }
+          />
         </div>
 
         <div>
@@ -46,7 +78,8 @@ export function InsuranceDetailsForm() {
             id="insuranceType"
             name="insuranceType"
             required
-            defaultValue=""
+            value={value.insuranceType}
+            onChange={(event) => patch({ insuranceType: event.target.value })}
             className={fieldClass}
           >
             <option value="" disabled>
@@ -69,6 +102,8 @@ export function InsuranceDetailsForm() {
             name="damageDate"
             type="date"
             required
+            value={value.damageDate}
+            onChange={(event) => patch({ damageDate: event.target.value })}
             className={fieldClass}
           />
         </div>
@@ -83,6 +118,10 @@ export function InsuranceDetailsForm() {
             type="text"
             autoComplete="off"
             placeholder="Bijvoorbeeld: voorwaardencode van het polisblad"
+            value={value.policyConditionCode}
+            onChange={(event) =>
+              patch({ policyConditionCode: event.target.value })
+            }
             className={fieldClass}
           />
           <p className={helperClass}>
@@ -101,6 +140,10 @@ export function InsuranceDetailsForm() {
             type="text"
             autoComplete="off"
             placeholder="Bijvoorbeeld: WA, WA+ of allrisk"
+            value={value.coverageVariant}
+            onChange={(event) =>
+              patch({ coverageVariant: event.target.value })
+            }
             className={fieldClass}
           />
           <p className={helperClass}>

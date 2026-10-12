@@ -21,20 +21,38 @@ type InsurerComboboxProps = {
   id?: string;
   name?: string;
   required?: boolean;
+  value?: string;
+  otherName?: string;
+  onSelect?: (option: InsurerOption | null) => void;
+  onOtherNameChange?: (otherName: string) => void;
 };
 
 export function InsurerCombobox({
   id = "insurer",
   name = "insurer",
   required = true,
+  value = "",
+  otherName = "",
+  onSelect,
+  onOtherNameChange,
 }: InsurerComboboxProps) {
   const listboxId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<InsurerOption | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+
+  const selected =
+    INSURER_OPTIONS.find((option) => option.value === value) ?? null;
+
+  useEffect(() => {
+    if (selected) {
+      setQuery(selected.label);
+    } else if (!value) {
+      setQuery("");
+    }
+  }, [selected, value]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -64,9 +82,9 @@ export function InsurerCombobox({
   }, [query, open]);
 
   function selectOption(option: InsurerOption) {
-    setSelected(option);
     setQuery(option.label);
     setOpen(false);
+    onSelect?.(option);
     inputRef.current?.focus();
   }
 
@@ -151,7 +169,7 @@ export function InsurerCombobox({
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
-            setSelected(null);
+            onSelect?.(null);
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
@@ -233,6 +251,8 @@ export function InsurerCombobox({
             type="text"
             autoComplete="off"
             placeholder="Vul de naam van de verzekeraar in"
+            value={otherName}
+            onChange={(event) => onOtherNameChange?.(event.target.value)}
             className={fieldClass}
           />
         </div>
