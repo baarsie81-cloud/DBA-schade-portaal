@@ -115,6 +115,7 @@ export function selectPolicyCandidates(
   links: ExtractedDocumentLink[],
   input: PolicySearchInput,
   maxCandidates = 5,
+  insurerName?: string,
 ): PolicyCandidate[] {
   const ranked = links
     .map((link) => ({ link, score: scoreLink(link, input) }))
@@ -141,5 +142,6 @@ export function selectPolicyCandidates(
     description: "",
     sourceKind: "possible_official" as const,
     conditionCodeHint: link.conditionCodeHint,
+    insurerName,
   }));
 }

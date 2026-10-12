@@ -7,7 +7,6 @@ export const runtime = "nodejs";
 /**
  * Zoekt openbare kandidaatdocumenten op vooraf geregistreerde
  * officiële verzekeraarsbronnen. Geen PDF-analyse, geen exacte match.
- * Bronfouten worden per zoekactie afgehandeld zonder andere merken te raken.
  */
 export async function POST(request: Request) {
   let body: unknown;
@@ -28,24 +27,8 @@ export async function POST(request: Request) {
   try {
     const result = await searchOfficialDocuments(parsed.value);
 
-    if (result.status === "not_implemented") {
-      return NextResponse.json({
-        status: "not_implemented" as const,
-        candidates: [],
-        message: result.message,
-      });
-    }
-
-    if (result.status === "no_match") {
-      return NextResponse.json({
-        status: "no_match" as const,
-        candidates: [],
-        message: result.message,
-      });
-    }
-
     return NextResponse.json({
-      status: "candidates_found" as const,
+      status: result.status,
       candidates: result.candidates,
       message: result.message,
     });
@@ -54,7 +37,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "Er ging iets mis bij het zoeken. Zoek de juiste polisvoorwaarden in het interne systeem van DBA en upload deze.",
+          "Er ging iets mis bij het zoeken. Zoek de toepasselijke voorwaarden in het interne systeem van DBA en upload deze handmatig.",
       },
       { status: 500 },
     );
