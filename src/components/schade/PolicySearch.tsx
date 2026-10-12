@@ -64,7 +64,11 @@ export function PolicySearch({ searchInput }: PolicySearchProps) {
       });
 
       const data = (await response.json()) as {
-        status?: "setup_pending" | "candidates_found" | "no_match";
+        status?:
+          | "not_implemented"
+          | "candidates_found"
+          | "no_match"
+          | "setup_pending";
         candidates?: PolicyCandidate[];
         error?: string;
         message?: string;
@@ -79,18 +83,22 @@ export function PolicySearch({ searchInput }: PolicySearchProps) {
         return;
       }
 
-      if (data.status === "setup_pending") {
+      if (data.status === "not_implemented" || data.status === "setup_pending") {
         setCandidates([]);
         setInfoMessage(
           data.message ??
-            "Automatisch zoeken op officiële verzekeraarswebsites wordt momenteel ingericht.",
+            "Automatisch zoeken voor deze verzekeraar is nog niet beschikbaar.\n\nZoek de juiste polisvoorwaarden in het interne systeem van DBA en upload deze.",
         );
-        setStatus("setup_pending");
+        setStatus("not_implemented");
         return;
       }
 
       if (data.status === "candidates_found" && data.candidates?.length) {
         setCandidates(data.candidates);
+        setInfoMessage(
+          data.message ??
+            "Controleer of het gevonden document overeenkomt met de voorwaarden op het polisblad.",
+        );
         setStatus("candidates_found");
         return;
       }
@@ -183,11 +191,11 @@ export function PolicySearch({ searchInput }: PolicySearchProps) {
           </div>
         ) : null}
 
-        {status === "setup_pending" ? (
+        {status === "not_implemented" ? (
           <div className="space-y-4">
-            <p className="text-sm leading-relaxed text-dba-muted">
+            <p className="whitespace-pre-line text-sm leading-relaxed text-dba-muted">
               {infoMessage ??
-                "Automatisch zoeken op officiële verzekeraarswebsites wordt momenteel ingericht."}
+                "Automatisch zoeken voor deze verzekeraar is nog niet beschikbaar.\n\nZoek de juiste polisvoorwaarden in het interne systeem van DBA en upload deze."}
             </p>
             <button type="button" className={secondaryButtonClass}>
               <Upload className="h-4 w-4" strokeWidth={1.75} />
@@ -203,8 +211,8 @@ export function PolicySearch({ searchInput }: PolicySearchProps) {
                 Mogelijke polisvoorwaarden gevonden
               </p>
               <p className="mt-1.5 text-[13px] leading-relaxed text-dba-muted">
-                Deze documenten zijn nog niet inhoudelijk geverifieerd. Controle
-                van de polisversie is noodzakelijk.
+                {infoMessage ??
+                  "Controleer of het gevonden document overeenkomt met de voorwaarden op het polisblad."}
               </p>
             </div>
 
@@ -229,26 +237,21 @@ export function PolicySearch({ searchInput }: PolicySearchProps) {
                         />
                       </a>
                       <p className="mt-1 text-[12px] text-dba-muted">
-                        {candidate.domain}
+                        Herkomst: {candidate.domain}
                       </p>
+                      {candidate.conditionCodeHint ? (
+                        <p className="mt-1 text-[12px] text-dba-muted">
+                          Herkende voorwaardecode:{" "}
+                          <span className="font-medium text-dba-charcoal">
+                            {candidate.conditionCodeHint}
+                          </span>
+                        </p>
+                      ) : null}
                     </div>
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${
-                        candidate.sourceKind === "possible_official"
-                          ? "bg-[#eef6f2] text-dba-dark-green"
-                          : "bg-dba-pill-bg text-dba-pill-text"
-                      }`}
-                    >
-                      {candidate.sourceKind === "possible_official"
-                        ? "Mogelijke officiële bron"
-                        : "Overige bron"}
+                    <span className="inline-flex rounded-full bg-[#eef6f2] px-2.5 py-1 text-[11px] font-medium text-dba-dark-green">
+                      Mogelijke officiële bron
                     </span>
                   </div>
-                  {candidate.description ? (
-                    <p className="mt-2 text-[13px] leading-relaxed text-dba-muted">
-                      {candidate.description}
-                    </p>
-                  ) : null}
                 </li>
               ))}
             </ul>
@@ -269,9 +272,15 @@ export function PolicySearch({ searchInput }: PolicySearchProps) {
         ) : null}
 
         {status === "error" && error ? (
-          <p role="alert" className="text-sm leading-relaxed text-dba-muted">
-            {error}
-          </p>
+          <div className="space-y-4">
+            <p role="alert" className="text-sm leading-relaxed text-dba-muted">
+              {error}
+            </p>
+            <button type="button" className={secondaryButtonClass}>
+              <Upload className="h-4 w-4" strokeWidth={1.75} />
+              Polisdocumenten uploaden
+            </button>
+          </div>
         ) : null}
       </div>
     </section>

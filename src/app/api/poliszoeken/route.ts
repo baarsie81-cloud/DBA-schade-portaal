@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { buildPolicySearchQueries } from "@/lib/policy-search/build-queries";
+import { OfficialHubFetchError } from "@/lib/policy-search/fetch-official-hub";
+import { searchOfficialDocuments } from "@/lib/policy-search/search-official-documents";
 import { parsePolicySearchBody } from "@/lib/policy-search/validate-input";
 
 export const runtime = "nodejs";
 
 /**
- * Placeholder voor het zoeken op officiële verzekeraarswebsites.
- * Geen externe zoek-API in MVP 0.
+ * Zoekt openbare kandidaatdocumenten op vooraf geregistreerde
+ * officiële verzekeraarsbronnen. Geen PDF-analyse, geen exacte match.
  */
 export async function POST(request: Request) {
   let body: unknown;
@@ -24,13 +25,42 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  // Queries worden al opgebouwd zodat de volgende zoekstap hierop kan voortbouwen.
-  buildPolicySearchQueries(parsed.value);
+  try {
+    const result = await searchOfficialDocuments(parsed.value);
 
-  return NextResponse.json({
-    status: "setup_pending" as const,
-    candidates: [],
-    message:
-      "Automatisch zoeken op officiële verzekeraarswebsites wordt momenteel ingericht.",
-  });
+    if (result.status === "not_implemented") {
+      return NextResponse.json({
+        status: "not_implemented" as const,
+        candidates: [],
+        message: result.message,
+      });
+    }
+
+    if (result.status === "no_match") {
+      return NextResponse.json({
+        status: "no_match" as const,
+        candidates: [],
+        message: result.message,
+      });
+    }
+
+    return NextResponse.json({
+      status: "candidates_found" as const,
+      candidates: result.candidates,
+      message: result.message,
+    });
+  } catch (error) {
+    if (error instanceof OfficialHubFetchError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
+
+    console.error("poliszoeken: onverwachte fout");
+    return NextResponse.json(
+      { error: "Er ging iets mis bij het zoeken. Probeer het opnieuw." },
+      { status: 500 },
+    );
+  }
 }

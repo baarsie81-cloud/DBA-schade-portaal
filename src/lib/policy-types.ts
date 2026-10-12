@@ -16,12 +16,15 @@ export type PolicyCandidate = {
   domain: string;
   description: string;
   sourceKind: "possible_official" | "other";
+  /** Uit linktekst/titel herkend; geen geverifieerde documentmatch. */
+  conditionCodeHint?: string | null;
 };
 
 export type PolicySearchStatus =
   | "idle"
   | "searching"
   | "setup_pending"
+  | "not_implemented"
   | "candidates_found"
   | "no_match"
   | "error";
