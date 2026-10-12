@@ -1,4 +1,5 @@
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
+import { DamageDescriptionForm } from "@/components/schade/DamageDescriptionForm";
 import { InsuranceDetailsForm } from "@/components/schade/InsuranceDetailsForm";
 
 export default function NieuweSchadePage() {
@@ -10,6 +11,7 @@ export default function NieuweSchadePage() {
         subtitle="Vul de verzekeringsgegevens in om een schadebeoordeling te starten."
       />
       <InsuranceDetailsForm />
+      <DamageDescriptionForm />
     </div>
   );
 }
