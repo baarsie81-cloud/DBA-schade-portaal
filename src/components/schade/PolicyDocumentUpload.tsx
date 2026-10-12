@@ -109,18 +109,36 @@ async function validatePdfFile(
   return null;
 }
 
-function extractionStatusLabel(status: PdfTextExtractionStatus): string {
+function formatExtractionStatus(doc: LocalPolicyUploadDocument): string {
+  const status = doc.extractionStatus ?? "pending";
   switch (status) {
     case "pending":
       return "Nog niet verwerkt";
     case "processing":
-      return "Verwerken";
-    case "ready":
-      return "Tekst beschikbaar";
+      return "Verwerken...";
+    case "ready": {
+      const pages = doc.extractedDocument?.pageCount ?? 0;
+      return `Tekst beschikbaar — ${pages} pagina${pages === 1 ? "" : "s"}`;
+    }
     case "empty":
       return "Geen leesbare tekst gevonden";
     case "failed":
       return "Verwerking mislukt";
+  }
+}
+
+function extractionStatusTone(
+  status: PdfTextExtractionStatus,
+): string {
+  switch (status) {
+    case "ready":
+      return "border-[#b7d8cc] bg-[#eef6f2] text-dba-dark-green";
+    case "processing":
+    case "pending":
+      return "border-dba-border bg-white text-dba-charcoal";
+    case "empty":
+    case "failed":
+      return "border-[#f0d0d0] bg-[#fdf5f5] text-[#9b2c2c]";
   }
 }
 
@@ -132,71 +150,95 @@ export function PolicyDocumentUpload({
   const checkboxId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const processingIdsRef = useRef(new Set<string>());
+  const onChangeRef = useRef(onChange);
   const [privacyConfirmed, setPrivacyConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const pending = documents.find(
-      (doc) =>
-        doc.extractionStatus === "pending" &&
-        !processingIdsRef.current.has(doc.id),
-    );
-    if (!pending) return;
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
-    processingIdsRef.current.add(pending.id);
+  const runExtraction = async (doc: LocalPolicyUploadDocument) => {
+    if (processingIdsRef.current.has(doc.id)) return;
+    processingIdsRef.current.add(doc.id);
 
-    onChange((prev) =>
-      prev.map((doc) =>
-        doc.id === pending.id
+    onChangeRef.current((prev) =>
+      prev.map((item) =>
+        item.id === doc.id
           ? {
-              ...doc,
+              ...item,
               extractionStatus: "processing",
               extractionError: undefined,
             }
-          : doc,
+          : item,
       ),
     );
 
-    void (async () => {
+    try {
       const result = await extractPdfTextLocally({
-        file: pending.file,
-        documentType: pending.documentType,
+        file: doc.file,
+        documentType: doc.documentType,
       });
 
-      onChange((prev) => {
-        // Document kan tussentijds verwijderd zijn → tekst niet meer bewaren.
-        if (!prev.some((doc) => doc.id === pending.id)) {
-          return prev;
-        }
-        return prev.map((doc) => {
-          if (doc.id !== pending.id) return doc;
+      onChangeRef.current((prev) => {
+        if (!prev.some((item) => item.id === doc.id)) return prev;
+        return prev.map((item) => {
+          if (item.id !== doc.id) return item;
           return {
-            ...doc,
+            ...item,
             extractionStatus: result.status,
             extractedDocument: result,
             extractionError: result.errorMessage,
           };
         });
       });
-      processingIdsRef.current.delete(pending.id);
-    })();
-  }, [documents, onChange]);
+    } catch {
+      onChangeRef.current((prev) => {
+        if (!prev.some((item) => item.id === doc.id)) return prev;
+        return prev.map((item) => {
+          if (item.id !== doc.id) return item;
+          return {
+            ...item,
+            extractionStatus: "failed",
+            extractedDocument: undefined,
+            extractionError:
+              "De tekstextractie is onverwacht mislukt. Probeer een ander PDF-bestand.",
+          };
+        });
+      });
+    } finally {
+      processingIdsRef.current.delete(doc.id);
+    }
+  };
+
+  // Fallback: start extractie voor documenten die nog pending zijn.
+  useEffect(() => {
+    for (const doc of documents) {
+      if (
+        (doc.extractionStatus === "pending" || !doc.extractionStatus) &&
+        !processingIdsRef.current.has(doc.id)
+      ) {
+        void runExtraction(doc);
+      }
+    }
+  }, [documents]);
 
   async function handleFilesSelected(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
 
     setError(null);
-    const next = [...documents];
     const rejected: string[] = [];
+    let working = documents;
+    const validatedAdds: LocalPolicyUploadDocument[] = [];
 
     for (const file of Array.from(fileList)) {
-      const validationError = await validatePdfFile(file, next.length);
+      const validationError = await validatePdfFile(file, working.length);
       if (validationError) {
         rejected.push(validationError);
         continue;
       }
 
-      const duplicate = next.some(
+      const duplicate = working.some(
         (doc) =>
           doc.file.name === file.name &&
           doc.file.size === file.size &&
@@ -207,16 +249,22 @@ export function PolicyDocumentUpload({
         continue;
       }
 
-      next.push({
+      const doc: LocalPolicyUploadDocument = {
         id: createDocumentId(),
         file,
         documentType: "polisvoorwaarden",
         extractionStatus: "pending",
-      });
+      };
+      validatedAdds.push(doc);
+      working = [...working, doc];
     }
 
-    if (next.length !== documents.length) {
-      onChange(next);
+    if (validatedAdds.length > 0) {
+      onChange((prev) => [...prev, ...validatedAdds]);
+      // Start extractie direct; wacht niet alleen op useEffect.
+      for (const doc of validatedAdds) {
+        void runExtraction(doc);
+      }
     }
 
     if (rejected.length > 0) {
@@ -394,29 +442,28 @@ export function PolicyDocumentUpload({
                       </p>
                       <p className="mt-1 text-[12px] text-dba-muted">
                         {formatFileSize(doc.file.size)}
-                        {doc.extractedDocument?.pageCount
-                          ? ` · ${doc.extractedDocument.pageCount} pagina${
-                              doc.extractedDocument.pageCount === 1 ? "" : "s"
-                            }`
-                          : ""}
                       </p>
-                      <p className="mt-1.5 inline-flex items-center gap-1.5 text-[12px] text-dba-charcoal">
+                      <div
+                        className={`mt-2 inline-flex max-w-full items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium ${extractionStatusTone(
+                          doc.extractionStatus ?? "pending",
+                        )}`}
+                        role="status"
+                        aria-live="polite"
+                      >
                         {doc.extractionStatus === "processing" ? (
                           <LoaderCircle
-                            className="h-3.5 w-3.5 animate-spin text-dba-green"
+                            className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin"
                             strokeWidth={1.75}
                             aria-hidden
                           />
                         ) : null}
-                        <span>
-                          Tekstextractie:{" "}
-                          <span className="font-medium">
-                            {extractionStatusLabel(doc.extractionStatus)}
-                          </span>
-                        </span>
-                      </p>
+                        <span>{formatExtractionStatus(doc)}</span>
+                      </div>
                       {doc.extractionError ? (
-                        <p className="mt-1 text-[12px] leading-relaxed text-[#9b2c2c]">
+                        <p
+                          role="alert"
+                          className="mt-1.5 text-[12px] leading-relaxed text-[#9b2c2c]"
+                        >
                           {doc.extractionError}
                         </p>
                       ) : null}
